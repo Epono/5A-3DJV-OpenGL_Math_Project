@@ -5,11 +5,13 @@
 
 Quaternion::Quaternion()
 	: x_(0.), y_(0.), z_(0.), w_(0.)
-{}
+{
+}
 
 Quaternion::Quaternion(float x_, float y_, float z, float w)
 	: x_(x_), y_(y_), z_(z), w_(w)
-{}
+{
+}
 
 inline Quaternion::Quaternion(const glm::mat4& mat)
 {
@@ -31,7 +33,7 @@ inline bool Quaternion::operator!=(const Quaternion& other) const
 
 Quaternion& Quaternion::operator=(const Quaternion& other)
 {
-	if (this != &other)
+	if(this != &other)
 	{
 		x_ = other.x_;
 		y_ = other.y_;
@@ -45,7 +47,7 @@ Quaternion& Quaternion::operator=(const glm::mat4& m)
 {
 	const float diag = m[0].operator[](0) + m[1].operator[](1) + m[2].operator[](2) + 1.0f;
 
-	if (diag > 0.0f)
+	if(diag > 0.0f)
 	{
 		const float scale = sqrtf(diag) * 2.0f;
 
@@ -56,7 +58,7 @@ Quaternion& Quaternion::operator=(const glm::mat4& m)
 	}
 	else
 	{
-		if (m[0][0]>m[1][1] && m[0][0]>m[2][2])
+		if(m[0][0] > m[1][1] && m[0][0] > m[2][2])
 		{
 			const float scale = sqrtf(1.0f + m[0][0] - m[1][1] - m[2][2]) * 2.0f;
 
@@ -65,7 +67,7 @@ Quaternion& Quaternion::operator=(const glm::mat4& m)
 			z_ = (m[0][2] + m[2][0]) / scale;
 			w_ = (m[2][1] - m[1][2]) / scale;
 		}
-		else if (m[1][1]>m[2][2])
+		else if(m[1][1] > m[2][2])
 		{
 			const float scale = sqrtf(1.0f + m[1][1] - m[0][0] - m[2][2]) * 2.0f;
 
@@ -202,9 +204,9 @@ inline Quaternion& Quaternion::makeIdentity()
 	return *this;
 }
 
-
-glm::mat4 Quaternion::toMatrixUnit() {
-	//this->normalize();
+glm::mat4 Quaternion::toMatrixUnit()
+{
+	this->normalize();
 	float qxx = x_ * x_;
 	float qyy = y_ * y_;
 	float qzz = z_ * z_;

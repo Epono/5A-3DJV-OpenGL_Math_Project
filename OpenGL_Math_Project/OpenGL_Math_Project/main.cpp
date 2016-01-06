@@ -25,7 +25,6 @@ struct ViewProj
 	glm::mat4 viewMatrix;
 	glm::mat4 projectionMatrix;
 	glm::mat4 rotationMatrix;
-	Quaternion rotation;
 	glm::vec3 position;
 	glm::vec3 forward;
 	glm::vec3 right;
@@ -56,10 +55,12 @@ Object g_CubeMap;
 float horizontalAngle = 3.14f;				// Initial horizontal angle : toward -Z
 float verticalAngle = 0.0f;					// Initial vertical angle : none
 float mouseSpeed = 0.005f;
+float mouseSpeed2 = 0.05f;
 
 int oldX;
 int oldY;
 unsigned char keyState[255];
+unsigned char mouseButtonsState[10];
 
 void InitCubemap()
 {
@@ -300,6 +301,7 @@ void Initialize()
 	TwAddVarRW(objTweakBar, "Yaw", TW_TYPE_FLOAT, &g_Object.rotation.y, "");
 	TwAddSeparator(objTweakBar, "...", "");
 	TwAddButton(objTweakBar, "Quitter", &ExitCallbackTw, nullptr, "");
+	//TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Object.rotation, "Definition");
 
 	// Objets OpenGL
 	g_BasicShader.LoadVertexShader("basic.vs");
@@ -324,13 +326,20 @@ void Initialize()
 	LoadOBJ(inputFile);
 	InitCubemap();
 
+	// Init de la caméra
 	g_Camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
 	g_Camera.forward = glm::vec3(0.0f, 0.0f, -1.0f);
 	g_Camera.right = glm::vec3(1.0f, 0.0f, 0.0f);
 
+	// Init du clavier
 	for(int i = 0; i < 256; i++)
 	{
 		keyState[i] = GLUT_UP;
+	}
+
+	for(int i = 0; i < 10; i++)
+	{
+		mouseButtonsState[i] = GLUT_UP;
 	}
 }
 
@@ -346,13 +355,11 @@ void Terminate()
 	TwTerminate();
 }
 
-// boucle principale ---
+// Boucle principale
 void Resize(GLint width, GLint height)
 {
 	glViewport(0, 0, width, height);
-
 	g_Camera.projectionMatrix = glm::perspectiveFov(45.f, (float) width, (float) height, 0.1f, 1000.f);
-
 	TwWindowSize(width, height);
 }
 
@@ -385,6 +392,24 @@ void Update()
 		g_Camera.position += g_Camera.right / 15.0f;
 	}
 
+	if(keyState['a'] == GLUT_DOWN)
+	{
+		g_Camera.position.y += 1.0f / 15.0f;
+	}
+	else if(keyState[' '] == GLUT_DOWN)
+	{
+		g_Camera.position.y += 1.0f / 15.0f;
+	}
+	else if(keyState['e'] == GLUT_DOWN)
+	{
+		g_Camera.position.y -= 1.0f / 15.0f;
+	}
+
+	if(keyState[27] == GLUT_DOWN)
+	{
+		exit(0);
+	}
+
 	glutPostRedisplay();
 }
 
@@ -411,11 +436,20 @@ void Render()
 	float roll = glm::radians(g_Object.rotation.z);
 	g_Object.worldMatrix = glm::eulerAngleYXZ(yaw, pitch, roll);
 
-	// rendu	
+	// Rendu des objets
 	auto program = g_BasicShader.GetProgram();
 	glUseProgram(program);
 
 	auto worldLocation = glGetUniformLocation(program, "u_worldMatrix");
+
+	//g_Object.position = glm::vec3(0.f, 0.f, 0.f);
+
+	float objectPositionX = g_Object.position.x;
+	float objectPositionY = g_Object.position.y;
+	float objectPositionZ = g_Object.position.z;
+
+	auto offsetLocation = glGetUniformLocation(program, "u_offset");
+	glUniform3f(offsetLocation, objectPositionX, objectPositionY, objectPositionZ);
 
 	glBindTexture(GL_TEXTURE_2D, g_Object.textureObj);
 
@@ -425,6 +459,10 @@ void Render()
 	glm::mat4& transform = g_Object.worldMatrix;
 	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(transform));
 
+	glDrawElements(GL_TRIANGLES, g_Object.ElementCount, GL_UNSIGNED_INT, 0);
+
+	// Rendu d'un repère fixe
+	glUniform3f(offsetLocation, 0, 0, 0);
 	glDrawElements(GL_TRIANGLES, g_Object.ElementCount, GL_UNSIGNED_INT, 0);
 
 	// dessin de la cubemap, de preference en dernier afin de limiter "l'overdraw"
@@ -459,19 +497,17 @@ void Render()
 
 void mouse(int button, int state, int x, int y)
 {
+	mouseButtonsState[button] = state;
 	if(!TwEventMouseButtonGLUT(button, state, x, y))
 	{  // send event to AntTweakBar
-		if(button == GLUT_LEFT_BUTTON)
+		if(state == GLUT_UP)
 		{
-			if(state == GLUT_UP)
-			{
 
-			}
-			else if(state == GLUT_DOWN)
-			{
-				oldX = x;
-				oldY = y;
-			}
+		}
+		else if(state == GLUT_DOWN)
+		{
+			oldX = x;
+			oldY = y;
 		}
 	}
 	glutPostRedisplay();
@@ -499,32 +535,42 @@ void motion(int x, int y)
 			0,
 			cos(((x) * M_PI) / width)
 			);
-		//Quaternion qZ(
-		//	0,
-		//	0,
-		//	sin(((y) * M_PI) / height),
-		//	cos(((y) * M_PI) / height)
-		//	);
-		g_Camera.rotation = qY * qX;
-		g_Camera.rotationMatrix = g_Camera.rotation.toMatrixUnit();
 
+		Quaternion rotation = qY * qX;
 
 		horizontalAngle += mouseSpeed * deltaX;
 		verticalAngle += mouseSpeed * deltaY;
 
-		// Direction : Spherical coordinates to Cartesian coordinates conversion
-		g_Camera.forward = glm::vec3(
+		// Vecteur avant
+		glm::vec3 forward = glm::vec3(
 			cos(verticalAngle) * sin(horizontalAngle),
 			sin(verticalAngle),
 			cos(verticalAngle) * cos(horizontalAngle)
 			);
 
-		// Right vector
-		g_Camera.right = glm::vec3(
+		// Vecteur droite
+		glm::vec3 right = glm::vec3(
 			sin(horizontalAngle - M_PI / 2.0f),
 			0,
 			cos(horizontalAngle - M_PI / 2.0f)
 			);
+
+		// Vecteur haut
+		glm::vec3 up = glm::cross(g_Camera.forward, g_Camera.right);
+
+		if(mouseButtonsState[GLUT_LEFT_BUTTON] == GLUT_DOWN)
+		{
+			g_Object.position += mouseSpeed2 * (((float) -deltaX * right) + ((float) -deltaY * up));
+			// TODO: degueu
+			horizontalAngle -= mouseSpeed * deltaX;
+			verticalAngle -= mouseSpeed * deltaY;
+		}
+		else if(mouseButtonsState[GLUT_RIGHT_BUTTON] == GLUT_DOWN)
+		{
+			g_Camera.forward = forward;
+			g_Camera.right = right;
+			g_Camera.rotationMatrix = rotation.toMatrixUnit();
+		}
 
 		oldX = x;
 		oldY = y;
@@ -536,20 +582,11 @@ void motion(int x, int y)
 void keyboard(unsigned char key, int x, int y)
 {
 	keyState[key] = GLUT_DOWN;
-
-	switch(key)
-	{
-	case 27:
-		exit(0);
-	}
-
-	glutPostRedisplay();
 }
 
 void keyboardUp(unsigned char key, int x, int y)
 {
 	keyState[key] = GLUT_UP;
-	glutPostRedisplay();
 }
 
 int main(int argc, char* argv[])
