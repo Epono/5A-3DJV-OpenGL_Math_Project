@@ -9,6 +9,7 @@ in Vertex
 {
 	vec3 normal;
 	vec2 texcoords;
+	float useTransparency;
 } IN;
 
 out vec4 Fragment;
@@ -16,8 +17,13 @@ out vec4 Fragment;
 void main(void)
 {
     vec4 texColor = texture(u_sampler, IN.texcoords);
-	// calcul du cosinus de l'angle entre les deux vecteurs
-	float NdotL = max(dot(normalize(IN.normal), L), 0.0);
-	// Equation de Lambert : Intensite Reflechie = Intensite Incidente * N.L
-    Fragment = texColor * NdotL;
+
+	if(IN.useTransparency < 0.5) {
+		// calcul du cosinus de l'angle entre les deux vecteurs
+		float NdotL = max(dot(normalize(IN.normal), L), 0.0);
+		// Equation de Lambert : Intensite Reflechie = Intensite Incidente * N.L
+		Fragment = texColor * NdotL;
+	} else {
+		Fragment = vec4(texColor.xyz, 0.3);
+	}
 }

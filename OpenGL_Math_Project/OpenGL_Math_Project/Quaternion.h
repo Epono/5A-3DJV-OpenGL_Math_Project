@@ -42,7 +42,7 @@ public:
 
 	Quaternion& makeIdentity();
 
-	glm::mat4 toMatrixUnit();
+	glm::mat4 toRotationMatrix();
 
 
 	float x_, y_, z_, w_;

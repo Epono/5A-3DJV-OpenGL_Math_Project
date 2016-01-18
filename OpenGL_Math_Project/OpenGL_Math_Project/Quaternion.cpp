@@ -204,7 +204,7 @@ inline Quaternion& Quaternion::makeIdentity()
 	return *this;
 }
 
-glm::mat4 Quaternion::toMatrixUnit()
+glm::mat4 Quaternion::toRotationMatrix()
 {
 	this->normalize();
 	float qxx = x_ * x_;

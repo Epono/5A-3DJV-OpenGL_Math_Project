@@ -7,6 +7,7 @@ layout(location = 2) in vec2 a_texcoords;
 uniform mat4 u_worldMatrix;
 
 uniform vec3 u_offset;
+uniform float u_useTransparency;
 
 layout(std140) uniform ViewProj
 {
@@ -18,6 +19,7 @@ out Vertex
 {
 	vec3 normal;
 	vec2 texcoords;
+	float useTransparency;
 } OUT;
 
 void main(void)
@@ -26,4 +28,5 @@ void main(void)
 	OUT.normal = N;
 	OUT.texcoords = a_texcoords;
 	gl_Position = u_projectionMatrix * u_viewMatrix * u_worldMatrix * (a_position + vec4(u_offset, 0.0f));
+	OUT.useTransparency = u_useTransparency;
 }

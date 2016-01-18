@@ -22,40 +22,51 @@ int previousTime = 0;
 
 struct ViewProj
 {
+	// Les matrices
 	glm::mat4 viewMatrix;
 	glm::mat4 projectionMatrix;
 	glm::mat4 rotationMatrix;
+
+	// Position de la caméra
 	glm::vec3 position;
+
+	// Vecteurs orientation de la caméra
 	glm::vec3 forward;
 	glm::vec3 right;
+
+	// Buffer
 	GLuint UBO;
 } g_Camera;
 
 struct Object
 {
-	// transform
+	// Transform
 	glm::vec3 position;
 	glm::vec3 rotation;
 	glm::mat4 worldMatrix;
-	// mesh
+
+	// Mesh
 	GLuint VBO;
 	GLuint IBO;
 	GLuint ElementCount;
 	GLenum PrimitiveType;
 	GLuint VAO;
-	// material
+
+	// Material
 	GLuint textureObj;
-	//
+
+	// Champs divers
 	bool autoRotate;
 };
 
 Object g_Object;
 Object g_CubeMap;
 
-float horizontalAngle = 3.14f;				// Initial horizontal angle : toward -Z
-float verticalAngle = 0.0f;					// Initial vertical angle : none
-float mouseSpeed = 0.005f;
-float mouseSpeed2 = 0.05f;
+float horizontalAngleCamera = 3.14f;				// Initial horizontal angle : toward -Z
+float verticalAngleCamera = 0.0f;					// Initial vertical angle : none
+float mouseSpeedCamera = 0.005f;
+float mouseSpeedMoveObject = 0.05f;
+float movementSpeed = 10.0f;
 
 int oldX;
 int oldY;
@@ -275,13 +286,6 @@ void Initialize()
 		exit(-1);
 	}
 
-#if LIST_EXTENSIONS
-	for(int index = 0; index < numExtensions; ++index)
-	{
-		printf("Extension[%d] : %s\n", index, glGetStringi(GL_EXTENSIONS, index));
-	}
-#endif
-
 #ifdef _WIN32
 	// on coupe la synchro vertical pour voir l'effet du delta time
 	wglSwapIntervalEXT(0);
@@ -290,7 +294,21 @@ void Initialize()
 	// render states par defaut
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
-	glEnable(GL_CULL_FACE);
+	// Pour pas la transparence
+	 glEnable(GL_CULL_FACE);
+	// Pour la transparence
+	// glDisable(GL_CULL_FACE);
+
+	// Pour la transparence /////////////////////////////////////////////////////////////
+	 glEnable(GL_BLEND);
+
+	 //Ca
+	 glBlendEquation(GL_FUNC_ADD);
+	 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// Ou ca
+	// glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+	////////////////////////////////////////////////////////////////////////////////////
 
 	// AntTweakBar
 	TwInit(TW_OPENGL, NULL); // ou TW_OPENGL_CORE selon le cas de figure
@@ -306,7 +324,7 @@ void Initialize()
 	// Objets OpenGL
 	g_BasicShader.LoadVertexShader("basic.vs");
 	g_BasicShader.LoadFragmentShader("basic.fs");
-	g_BasicShader.Create();
+	g_BasicShader.Create();	
 
 	glGenBuffers(1, &g_Camera.UBO);
 	glBindBuffer(GL_UNIFORM_BUFFER, g_Camera.UBO);
@@ -351,6 +369,7 @@ void Terminate()
 	CleanObjet(g_CubeMap);
 
 	g_BasicShader.Destroy();
+	g_SkyboxShader.Destroy();
 
 	TwTerminate();
 }
@@ -377,32 +396,29 @@ void Update()
 
 	if(keyState['z'] == GLUT_DOWN)
 	{
-		g_Camera.position += g_Camera.forward / 15.0f;
-	}
-	else if(keyState['q'] == GLUT_DOWN)
-	{
-		g_Camera.position -= g_Camera.right / 15.0f;
+		g_Camera.position += elapsedTime* g_Camera.forward * movementSpeed;
 	}
 	else if(keyState['s'] == GLUT_DOWN)
 	{
-		g_Camera.position -= g_Camera.forward / 15.0f;
+		g_Camera.position -= elapsedTime* g_Camera.forward * movementSpeed;
+	}
+	
+	if(keyState['q'] == GLUT_DOWN)
+	{
+		g_Camera.position -= elapsedTime* g_Camera.right * movementSpeed;
 	}
 	else if(keyState['d'] == GLUT_DOWN)
 	{
-		g_Camera.position += g_Camera.right / 15.0f;
+		g_Camera.position += elapsedTime* g_Camera.right * movementSpeed;
 	}
 
-	if(keyState['a'] == GLUT_DOWN)
+	if(keyState['e'] == GLUT_DOWN || keyState[' '] == GLUT_DOWN)
 	{
-		g_Camera.position.y += 1.0f / 15.0f;
+		g_Camera.position.y += elapsedTime * movementSpeed;
 	}
-	else if(keyState[' '] == GLUT_DOWN)
+	else if(keyState['a'] == GLUT_DOWN)
 	{
-		g_Camera.position.y += 1.0f / 15.0f;
-	}
-	else if(keyState['e'] == GLUT_DOWN)
-	{
-		g_Camera.position.y -= 1.0f / 15.0f;
+		g_Camera.position.y -= elapsedTime * movementSpeed;
 	}
 
 	if(keyState[27] == GLUT_DOWN)
@@ -436,36 +452,63 @@ void Render()
 	float roll = glm::radians(g_Object.rotation.z);
 	g_Object.worldMatrix = glm::eulerAngleYXZ(yaw, pitch, roll);
 
-	// Rendu des objets
+	/////////////////////////////////////////////////////////////////////// Rendu des objets
 	auto program = g_BasicShader.GetProgram();
 	glUseProgram(program);
 
 	auto worldLocation = glGetUniformLocation(program, "u_worldMatrix");
 
-	//g_Object.position = glm::vec3(0.f, 0.f, 0.f);
-
-	float objectPositionX = g_Object.position.x;
-	float objectPositionY = g_Object.position.y;
-	float objectPositionZ = g_Object.position.z;
+	glm::vec3 objectPosition = glm::vec3(0, 10, 0);
 
 	auto offsetLocation = glGetUniformLocation(program, "u_offset");
-	glUniform3f(offsetLocation, objectPositionX, objectPositionY, objectPositionZ);
+	glUniform3f(offsetLocation, objectPosition.x, objectPosition.y, objectPosition.z);
+
+	auto useTransparencyLocation = glGetUniformLocation(program, "u_useTransparency");
+	glUniform1f(useTransparencyLocation, 0);
 
 	glBindTexture(GL_TEXTURE_2D, g_Object.textureObj);
 
 	glBindVertexArray(g_Object.VAO);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Object.IBO);
 
-	glm::mat4& transform = g_Object.worldMatrix;
+	glm::mat4 jefaisdestests = glm::translate(glm::mat4(1), objectPosition);
+	jefaisdestests = jefaisdestests * glm::eulerAngleYXZ(yaw, pitch, roll);
+	jefaisdestests = glm::translate(jefaisdestests, -objectPosition);
+
+	glm::mat4& transform = jefaisdestests;
 	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(transform));
 
+
+
 	glDrawElements(GL_TRIANGLES, g_Object.ElementCount, GL_UNSIGNED_INT, 0);
 
-	// Rendu d'un repère fixe
-	glUniform3f(offsetLocation, 0, 0, 0);
+	///////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe transparent
+	glUniform1f(useTransparencyLocation, 1);
+
+	// On active/désactive des fonctions pour la transparence
+	glDisable(GL_CULL_FACE);
+	glEnable(GL_BLEND);
+
+	//Ca
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// Ou ca
+	// glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+
+	objectPosition = glm::vec3(0, 0, 0);
+	transform = g_Object.worldMatrix;
+	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(transform));
+
+	glUniform3f(offsetLocation, objectPosition.x, objectPosition.y, objectPosition.z);
 	glDrawElements(GL_TRIANGLES, g_Object.ElementCount, GL_UNSIGNED_INT, 0);
 
-	// dessin de la cubemap, de preference en dernier afin de limiter "l'overdraw"
+	// On active/désactive des fonctions pour annuler la transparence
+	glEnable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+
+	//////////////////////////////////////////////////////////////////////// Dessin de la cubemap, de preference en dernier afin de limiter "l'overdraw"
+	//////////////////////////////////////////////////////////////////////// Si on la dessine avant, on a un peu de transparence, mais moche
 	glUseProgram(g_SkyboxShader.GetProgram());
 
 	glBindTexture(GL_TEXTURE_CUBE_MAP, g_CubeMap.textureObj);
@@ -499,7 +542,7 @@ void mouse(int button, int state, int x, int y)
 {
 	mouseButtonsState[button] = state;
 	if(!TwEventMouseButtonGLUT(button, state, x, y))
-	{  // send event to AntTweakBar
+	{
 		if(state == GLUT_UP)
 		{
 
@@ -538,38 +581,39 @@ void motion(int x, int y)
 
 		Quaternion rotation = qY * qX;
 
-		horizontalAngle += mouseSpeed * deltaX;
-		verticalAngle += mouseSpeed * deltaY;
-
-		// Vecteur avant
-		glm::vec3 forward = glm::vec3(
-			cos(verticalAngle) * sin(horizontalAngle),
-			sin(verticalAngle),
-			cos(verticalAngle) * cos(horizontalAngle)
-			);
-
-		// Vecteur droite
-		glm::vec3 right = glm::vec3(
-			sin(horizontalAngle - M_PI / 2.0f),
-			0,
-			cos(horizontalAngle - M_PI / 2.0f)
-			);
-
-		// Vecteur haut
-		glm::vec3 up = glm::cross(g_Camera.forward, g_Camera.right);
-
+		// Rotation objet
 		if(mouseButtonsState[GLUT_LEFT_BUTTON] == GLUT_DOWN)
 		{
-			g_Object.position += mouseSpeed2 * (((float) -deltaX * right) + ((float) -deltaY * up));
-			// TODO: degueu
-			horizontalAngle -= mouseSpeed * deltaX;
-			verticalAngle -= mouseSpeed * deltaY;
+			// TODO: bof, quand l'objet est tourné, la rotation devient galère
+			g_Object.rotation.x -= deltaY;
+			g_Object.rotation.y -= deltaX;
 		}
+		// Rotation camera
 		else if(mouseButtonsState[GLUT_RIGHT_BUTTON] == GLUT_DOWN)
 		{
+			horizontalAngleCamera += mouseSpeedCamera * deltaX;
+			verticalAngleCamera += mouseSpeedCamera * deltaY;
+
+			// Vecteur avant
+			glm::vec3 forward = glm::vec3(
+				cos(verticalAngleCamera) * sin(horizontalAngleCamera),
+				sin(verticalAngleCamera),
+				cos(verticalAngleCamera) * cos(horizontalAngleCamera)
+				);
+
+			// Vecteur droite
+			glm::vec3 right = glm::vec3(
+				sin(horizontalAngleCamera - M_PI / 2.0f),
+				0,
+				cos(horizontalAngleCamera - M_PI / 2.0f)
+				);
+
+			// Vecteur haut
+			glm::vec3 up = glm::cross(g_Camera.forward, g_Camera.right);
+
 			g_Camera.forward = forward;
 			g_Camera.right = right;
-			g_Camera.rotationMatrix = rotation.toMatrixUnit();
+			g_Camera.rotationMatrix = rotation.toRotationMatrix();
 		}
 
 		oldX = x;
