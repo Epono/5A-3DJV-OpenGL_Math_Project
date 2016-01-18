@@ -57,6 +57,9 @@ struct Object
 
 	// Champs divers
 	bool autoRotate;
+
+	// Temp
+	glm::vec4 rotationQuaternion;
 };
 
 Object g_Object;
@@ -319,7 +322,7 @@ void Initialize()
 	TwAddVarRW(objTweakBar, "Yaw", TW_TYPE_FLOAT, &g_Object.rotation.y, "");
 	TwAddSeparator(objTweakBar, "...", "");
 	TwAddButton(objTweakBar, "Quitter", &ExitCallbackTw, nullptr, "");
-	//TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Object.rotation, "Definition");
+	TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Object.rotationQuaternion, "label='Object rotation' opened=true help='Change the object orientation.' ");
 
 	// Objets OpenGL
 	g_BasicShader.LoadVertexShader("basic.vs");
@@ -497,7 +500,7 @@ void Render()
 	// glBlendFunc(GL_ZERO, GL_SRC_COLOR);
 
 	objectPosition = glm::vec3(0, 0, 0);
-	transform = g_Object.worldMatrix;
+	transform = Quaternion(g_Object.rotationQuaternion.x, g_Object.rotationQuaternion.y, g_Object.rotationQuaternion.z, g_Object.rotationQuaternion.w).toRotationMatrix();
 	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(transform));
 
 	glUniform3f(offsetLocation, objectPosition.x, objectPosition.y, objectPosition.z);
