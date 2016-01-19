@@ -62,8 +62,9 @@ struct Object
 	glm::vec4 rotationQuaternion;
 };
 
-Object g_Object;
+Object g_Rock;
 Object g_CubeMap;
+glm::vec3 lightDirection = glm::vec3(0.0f, 0.0f, -1.0f);
 
 float horizontalAngleCamera = 3.14f;				// Initial horizontal angle : toward -Z
 float verticalAngleCamera = 0.0f;					// Initial vertical angle : none
@@ -73,6 +74,8 @@ float movementSpeed = 10.0f;
 
 int oldX;
 int oldY;
+int deltaX;
+int deltaY;
 unsigned char keyState[255];
 unsigned char mouseButtonsState[10];
 
@@ -175,7 +178,7 @@ void LoadOBJ(const std::string &inputFile)
 	const std::vector<float>& normals = shapes[0].mesh.normals;
 	const std::vector<float>& texcoords = shapes[0].mesh.texcoords;
 
-	g_Object.ElementCount = indices.size();
+	g_Rock.ElementCount = indices.size();
 
 	uint32_t stride = 0;
 
@@ -195,13 +198,13 @@ void LoadOBJ(const std::string &inputFile)
 	const auto count = positions.size() / 3;
 	const auto totalSize = count * stride;
 
-	glGenBuffers(1, &g_Object.IBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Object.IBO);
+	glGenBuffers(1, &g_Rock.IBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Rock.IBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), &indices[0], GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	glGenBuffers(1, &g_Object.VBO);
-	glBindBuffer(GL_ARRAY_BUFFER, g_Object.VBO);
+	glGenBuffers(1, &g_Rock.VBO);
+	glBindBuffer(GL_ARRAY_BUFFER, g_Rock.VBO);
 	glBufferData(GL_ARRAY_BUFFER, totalSize, nullptr, GL_STATIC_DRAW);
 
 	// glMapBuffer retourne un pointeur sur la zone memoire allouee par glBufferData 
@@ -229,9 +232,9 @@ void LoadOBJ(const std::string &inputFile)
 	}
 	glUnmapBuffer(GL_ARRAY_BUFFER);
 
-	glGenVertexArrays(1, &g_Object.VAO);
-	glBindVertexArray(g_Object.VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, g_Object.VBO);
+	glGenVertexArrays(1, &g_Rock.VAO);
+	glBindVertexArray(g_Rock.VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, g_Rock.VBO);
 	uint32_t offset = 3 * sizeof(float);
 	glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, nullptr);
 	glEnableVertexAttribArray(0);
@@ -253,7 +256,7 @@ void LoadOBJ(const std::string &inputFile)
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	LoadAndCreateTextureRGBA(materials[0].diffuse_texname.c_str(), g_Object.textureObj);
+	LoadAndCreateTextureRGBA(materials[0].diffuse_texname.c_str(), g_Rock.textureObj);
 }
 
 void CleanObjet(Object& objet)
@@ -297,32 +300,19 @@ void Initialize()
 	// render states par defaut
 	glEnable(GL_DEPTH_TEST);
 	glDepthFunc(GL_LESS);
-	// Pour pas la transparence
-	 glEnable(GL_CULL_FACE);
-	// Pour la transparence
-	// glDisable(GL_CULL_FACE);
-
-	// Pour la transparence /////////////////////////////////////////////////////////////
-	 glEnable(GL_BLEND);
-
-	 //Ca
-	 glBlendEquation(GL_FUNC_ADD);
-	 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	// Ou ca
-	// glBlendFunc(GL_ZERO, GL_SRC_COLOR);
-	////////////////////////////////////////////////////////////////////////////////////
+	glEnable(GL_CULL_FACE);
 
 	// AntTweakBar
 	TwInit(TW_OPENGL, NULL); // ou TW_OPENGL_CORE selon le cas de figure
 	objTweakBar = TwNewBar("OBJ Loader");
 	TwAddSeparator(objTweakBar, "Camera", "");
-	TwAddVarRW(objTweakBar, "Auto Rotate Object", TW_TYPE_BOOLCPP, &g_Object.autoRotate, "");
+	TwAddVarRW(objTweakBar, "Auto Rotate Object", TW_TYPE_BOOLCPP, &g_Rock.autoRotate, "");
 	TwAddSeparator(objTweakBar, "Objet", "");
-	TwAddVarRW(objTweakBar, "Yaw", TW_TYPE_FLOAT, &g_Object.rotation.y, "");
+	TwAddVarRW(objTweakBar, "Yaw", TW_TYPE_FLOAT, &g_Rock.rotation.y, "");
 	TwAddSeparator(objTweakBar, "...", "");
+	TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Rock.rotationQuaternion, "label='Object rotation' opened=true help='Change the object orientation.' ");
+	TwAddVarRW(objTweakBar, "LightDir", TW_TYPE_DIR3F, &lightDirection, "label='Light direction' opened=true help='Change the light direction.' ");
 	TwAddButton(objTweakBar, "Quitter", &ExitCallbackTw, nullptr, "");
-	TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Object.rotationQuaternion, "label='Object rotation' opened=true help='Change the object orientation.' ");
 
 	// Objets OpenGL
 	g_BasicShader.LoadVertexShader("basic.vs");
@@ -345,10 +335,11 @@ void Initialize()
 
 	const std::string inputFile = "rock.obj";
 	LoadOBJ(inputFile);
+
 	InitCubemap();
 
 	// Init de la caméra
-	g_Camera.position = glm::vec3(0.0f, 0.0f, 5.0f);
+	g_Camera.position = glm::vec3(0.0f, 5.0f, 15.0f);
 	g_Camera.forward = glm::vec3(0.0f, 0.0f, -1.0f);
 	g_Camera.right = glm::vec3(1.0f, 0.0f, 0.0f);
 
@@ -358,6 +349,7 @@ void Initialize()
 		keyState[i] = GLUT_UP;
 	}
 
+	// Init de la souris
 	for(int i = 0; i < 10; i++)
 	{
 		mouseButtonsState[i] = GLUT_UP;
@@ -368,7 +360,7 @@ void Terminate()
 {
 	glDeleteBuffers(1, &g_Camera.UBO);
 
-	CleanObjet(g_Object);
+	CleanObjet(g_Rock);
 	CleanObjet(g_CubeMap);
 
 	g_BasicShader.Destroy();
@@ -387,16 +379,20 @@ void Resize(GLint width, GLint height)
 
 void Update()
 {
+	///////////////////////////////////////////////////////////////////////////////////// Calcul du temps écoulé (pour que la puissance du PC influe pas)
 	auto currentTime = glutGet(GLUT_ELAPSED_TIME);
 	auto delta = currentTime - previousTime;
 	previousTime = currentTime;
 	auto elapsedTime = delta / 1000.0f;
 
-	if(g_Object.autoRotate)
+	///////////////////////////////////////////////////////////////////////////////////// Rotation lente d'un caillou
+	// TODO: va changer 
+	if(g_Rock.autoRotate)
 	{
-		g_Object.rotation.y += 10.f * elapsedTime;
+		g_Rock.rotation.y += 10.f * elapsedTime;
 	}
 
+	///////////////////////////////////////////////////////////////////////////////////// Gestion du clavier (principalement déplacement)
 	if(keyState['z'] == GLUT_DOWN)
 	{
 		g_Camera.position += elapsedTime* g_Camera.forward * movementSpeed;
@@ -429,89 +425,44 @@ void Update()
 		exit(0);
 	}
 
+	///////////////////////////////////////////////////////////////////////////////////// Gestion de la souris (drag)
+	// TODO: difficile à déplacer :/
+	if(mouseButtonsState[GLUT_LEFT_BUTTON] == GLUT_DOWN || mouseButtonsState[GLUT_RIGHT_BUTTON] == GLUT_DOWN)
+	{
+		if(mouseButtonsState[GLUT_LEFT_BUTTON] == GLUT_DOWN) 
+		{
+	
+		}
+		else if(mouseButtonsState[GLUT_RIGHT_BUTTON] == GLUT_DOWN) 
+		{
+	
+		}
+	}
+
 	glutPostRedisplay();
 }
 
 void Render()
 {
+	///////////////////////////////////////////////////////////////////////////////////// Init du rendu
 	auto width = glutGet(GLUT_WINDOW_WIDTH);
 	auto height = glutGet(GLUT_WINDOW_HEIGHT);
 
 	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	// variables uniformes (constantes) 
+	///////////////////////////////////////////////////////////////////////////////////// Init camera
 	g_Camera.projectionMatrix = glm::perspectiveFov(45.f, (float) width, (float) height, 0.1f, 1000.f);
 	glm::vec3 position = g_Camera.position;
 	glm::vec3 direction = g_Camera.forward;
 	g_Camera.viewMatrix = glm::lookAt(position, position + direction, glm::vec3(0.f, 1.f, 0.f));
 
 	glBindBuffer(GL_UNIFORM_BUFFER, g_Camera.UBO);
-	//glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2, glm::value_ptr(g_Camera.viewMatrix), GL_STREAM_DRAW);
+	//glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4) * 2, glm::value_ptr(g_Camera.viewMatrix), GL_STREAM_DRAW); // Pourquoi c'est commente ? Ca sert
 	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4) * 2, glm::value_ptr(g_Camera.viewMatrix));
 
-	float yaw = glm::radians(g_Object.rotation.y);
-	float pitch = glm::radians(g_Object.rotation.x);
-	float roll = glm::radians(g_Object.rotation.z);
-	g_Object.worldMatrix = glm::eulerAngleYXZ(yaw, pitch, roll);
-
-	/////////////////////////////////////////////////////////////////////// Rendu des objets
-	auto program = g_BasicShader.GetProgram();
-	glUseProgram(program);
-
-	auto worldLocation = glGetUniformLocation(program, "u_worldMatrix");
-
-	glm::vec3 objectPosition = glm::vec3(0, 10, 0);
-
-	auto offsetLocation = glGetUniformLocation(program, "u_offset");
-	glUniform3f(offsetLocation, objectPosition.x, objectPosition.y, objectPosition.z);
-
-	auto useTransparencyLocation = glGetUniformLocation(program, "u_useTransparency");
-	glUniform1f(useTransparencyLocation, 0);
-
-	glBindTexture(GL_TEXTURE_2D, g_Object.textureObj);
-
-	glBindVertexArray(g_Object.VAO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Object.IBO);
-
-	glm::mat4 jefaisdestests = glm::translate(glm::mat4(1), objectPosition);
-	jefaisdestests = jefaisdestests * glm::eulerAngleYXZ(yaw, pitch, roll);
-	jefaisdestests = glm::translate(jefaisdestests, -objectPosition);
-
-	glm::mat4& transform = jefaisdestests;
-	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(transform));
-
-
-
-	glDrawElements(GL_TRIANGLES, g_Object.ElementCount, GL_UNSIGNED_INT, 0);
-
-	///////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe transparent
-	glUniform1f(useTransparencyLocation, 1);
-
-	// On active/désactive des fonctions pour la transparence
-	glDisable(GL_CULL_FACE);
-	glEnable(GL_BLEND);
-
-	//Ca
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	// Ou ca
-	// glBlendFunc(GL_ZERO, GL_SRC_COLOR);
-
-	objectPosition = glm::vec3(0, 0, 0);
-	transform = Quaternion(g_Object.rotationQuaternion.x, g_Object.rotationQuaternion.y, g_Object.rotationQuaternion.z, g_Object.rotationQuaternion.w).toRotationMatrix();
-	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(transform));
-
-	glUniform3f(offsetLocation, objectPosition.x, objectPosition.y, objectPosition.z);
-	glDrawElements(GL_TRIANGLES, g_Object.ElementCount, GL_UNSIGNED_INT, 0);
-
-	// On active/désactive des fonctions pour annuler la transparence
-	glEnable(GL_CULL_FACE);
-	glDisable(GL_BLEND);
-
-	//////////////////////////////////////////////////////////////////////// Dessin de la cubemap, de preference en dernier afin de limiter "l'overdraw"
-	//////////////////////////////////////////////////////////////////////// Si on la dessine avant, on a un peu de transparence, mais moche
+	////////////////////////////////////////////////////////////////////////////////////// Dessin de la cubemap, de preference en dernier afin de limiter "l'overdraw"
+	////////////////////////////////////////////////////////////////////////////////////// Si on la dessine avant, on a un peu de transparence, mais moche
 	glUseProgram(g_SkyboxShader.GetProgram());
 
 	glBindTexture(GL_TEXTURE_CUBE_MAP, g_CubeMap.textureObj);
@@ -527,15 +478,75 @@ void Render()
 	glDepthFunc(GL_LEQUAL);
 	glDrawArrays(GL_TRIANGLES, 0, 8 * 2 * 3);
 
-	// on retabli ensuite les render states par defaut
+	// On reset les machins
 	glDepthMask(GL_TRUE);
 	glDepthFunc(GL_LESS);
 
+	///////////////////////////////////////////////////////////////////////////////////// Rendu des objets
+	///////// Init objet rock
+	glUseProgram(g_BasicShader.GetProgram());
+
+	auto worldLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_worldMatrix");
+	auto offsetLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_offset");
+	auto useTransparencyLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_useTransparency");
+	// TODO: là on parle de direction DE la lumière, dans le shader c'est VERS la lumière ? à voir
+	auto lightDirectionLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_lightDirection");
+
+	glBindTexture(GL_TEXTURE_2D, g_Rock.textureObj);
+	glBindVertexArray(g_Rock.VAO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Rock.IBO);
+
+	glUniform3f(lightDirectionLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+	///////// Fin init objet rock
+
+	g_Rock.position = glm::vec3(0, 10, 0);
+
+	float yaw = glm::radians(g_Rock.rotation.y);
+	float pitch = glm::radians(g_Rock.rotation.x);
+	float roll = glm::radians(g_Rock.rotation.z);
+
+	glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), g_Rock.position);
+	tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(yaw, pitch, roll);
+	tempWorldMatrix = glm::translate(tempWorldMatrix, -g_Rock.position);
+
+	g_Rock.worldMatrix = tempWorldMatrix;
+
+	glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
+	glUniform1f(useTransparencyLocation, 0);
+	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
+
+	glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
+
+	/////////////////////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe transparent
+	// On active/désactive des fonctions pour la transparence
+	glEnable(GL_BLEND);
+	// Si on laisse activé, c'est plus joli, mais on voit rien à l'intérieur, donc mieux de laisser activer en fait
+	// Probleme de normales ?
+	// glDisable(GL_CULL_FACE);		
+
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	g_Rock.position = glm::vec3(0, 0, 0);
+	g_Rock.worldMatrix = Quaternion(g_Rock.rotationQuaternion.x, g_Rock.rotationQuaternion.y, g_Rock.rotationQuaternion.z, g_Rock.rotationQuaternion.w).toRotationMatrix();
+
+	glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
+	glUniform1f(useTransparencyLocation, 1);
+	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
+
+	glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
+
+	// On active/désactive des fonctions pour annuler la transparence
+	glDisable(GL_BLEND);
+	// Pas besoin de redésactiver, vu qu'on le laisse activé finalement
+	// glEnable(GL_CULL_FACE);
+
+	////////////////////////////////////////////////////////////////////////////////////// On reset tous les trucs bidules (pas vraiment obligatoire vu qu'on les écrase au prochain passage, mais bon)
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 	glBindVertexArray(0);
 
-	// dessine les tweakBar
+	////////////////////////////////////////////////////////////////////////////////////// Dessin de TweakBar
 	TwDraw();
 
 	glutSwapBuffers();
@@ -546,11 +557,7 @@ void mouse(int button, int state, int x, int y)
 	mouseButtonsState[button] = state;
 	if(!TwEventMouseButtonGLUT(button, state, x, y))
 	{
-		if(state == GLUT_UP)
-		{
-
-		}
-		else if(state == GLUT_DOWN)
+		if(state == GLUT_DOWN)
 		{
 			oldX = x;
 			oldY = y;
@@ -563,8 +570,8 @@ void motion(int x, int y)
 {
 	if(!TwEventMouseMotionGLUT(x, y))
 	{
-		int deltaX = oldX - x;
-		int deltaY = oldY - y;
+		deltaX = oldX - x;
+		deltaY = oldY - y;
 
 		int width = glutGet(GLUT_WINDOW_WIDTH);
 		int height = glutGet(GLUT_WINDOW_HEIGHT);
@@ -588,8 +595,8 @@ void motion(int x, int y)
 		if(mouseButtonsState[GLUT_LEFT_BUTTON] == GLUT_DOWN)
 		{
 			// TODO: bof, quand l'objet est tourné, la rotation devient galère
-			g_Object.rotation.x -= deltaY;
-			g_Object.rotation.y -= deltaX;
+			g_Rock.rotation.x -= deltaY;
+			g_Rock.rotation.y -= deltaX;
 		}
 		// Rotation camera
 		else if(mouseButtonsState[GLUT_RIGHT_BUTTON] == GLUT_DOWN)
@@ -644,7 +651,6 @@ int main(int argc, char* argv[])
 	glutCreateWindow("OBJ Loader");
 
 #ifdef FREEGLUT
-	// Note: glutSetOption n'est disponible qu'avec freeGLUT
 	glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE,
 				  GLUT_ACTION_GLUTMAINLOOP_RETURNS);
 #endif
@@ -654,9 +660,6 @@ int main(int argc, char* argv[])
 	glutIdleFunc(Update);
 	glutDisplayFunc(Render);
 
-	// redirection pour AntTweakBar
-	// dans le cas ou vous utiliseriez deja ces callbacks
-	// il suffit d'appeler l'event d'AntTweakBar depuis votre fonction de rappel
 	glutMouseFunc((GLUTmousebuttonfun) mouse);
 	glutMotionFunc((GLUTmousemotionfun) motion);
 	glutPassiveMotionFunc((GLUTmousemotionfun) TwEventMouseMotionGLUT);

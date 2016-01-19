@@ -10,6 +10,7 @@ in Vertex
 	vec3 normal;
 	vec2 texcoords;
 	float useTransparency;
+	vec3 lightDirection;
 } IN;
 
 out vec4 Fragment;
@@ -20,10 +21,13 @@ void main(void)
 
 	if(IN.useTransparency < 0.5) {
 		// calcul du cosinus de l'angle entre les deux vecteurs
-		float NdotL = max(dot(normalize(IN.normal), L), 0.0);
+		// Lumière fixe
+		// float NdotL = max(dot(normalize(IN.normal), L), 0.0);
+		// Lumière bougeable
+		float NdotL = max(dot(normalize(IN.normal), -IN.lightDirection), 0.0);
 		// Equation de Lambert : Intensite Reflechie = Intensite Incidente * N.L
 		Fragment = texColor * NdotL;
 	} else {
-		Fragment = vec4(texColor.xyz, 0.3);
+		Fragment = vec4(texColor.xyz, 0.5);
 	}
 }
