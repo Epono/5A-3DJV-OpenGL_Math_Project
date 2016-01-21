@@ -544,11 +544,11 @@ void Render()
 
 		//glLoadIdentity();
 		//glTranslated(0.6*cos(ka*t), 0.6*cos(kb*t), 0.6*sin(kc*t));
-		glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), glm::vec3((0.6*cos(ka*t), 0.6*cos(kb*t), 0.6*sin(kc*t))));
+		glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), glm::vec3(6*cos(ka*t), 6*cos(kb*t), 6*sin(kc*t)));
 
 		//glRotated(r, 0.2, 0.7, 0.2);
 		//tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(yaw, pitch, roll);
-		tempWorldMatrix = glm::rotate(tempWorldMatrix, (float)r, glm::vec3(0.2, 0.7, 0.2));
+		//tempWorldMatrix = glm::rotate(tempWorldMatrix, (float)r, glm::vec3(0.2, 0.7, 0.2));
 
 		//glScaled(0.1, 0.1, 0.1);
 		tempWorldMatrix = glm::scale(tempWorldMatrix, glm::vec3(0.3, 0.3, 0.3));
