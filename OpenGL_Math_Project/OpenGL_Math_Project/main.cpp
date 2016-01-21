@@ -65,6 +65,7 @@ struct Object
 Object g_Rock;
 Object g_CubeMap;
 glm::vec3 lightDirection = glm::vec3(0.0f, 0.0f, -1.0f);
+bool wireframe;
 
 float horizontalAngleCamera = 3.14f;				// Initial horizontal angle : toward -Z
 float verticalAngleCamera = 0.0f;					// Initial vertical angle : none
@@ -312,6 +313,8 @@ void Initialize()
 	TwAddSeparator(objTweakBar, "...", "");
 	TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Rock.rotationQuaternion, "label='Object rotation' opened=true help='Change the object orientation.' ");
 	TwAddVarRW(objTweakBar, "LightDir", TW_TYPE_DIR3F, &lightDirection, "label='Light direction' opened=true help='Change the light direction.' ");
+	TwAddVarRW(objTweakBar, "Wireframe", TW_TYPE_BOOLCPP, &wireframe,
+			   " group='Display' key=w help='Toggle wireframe display mode.' "); // 'Wireframe' is put in the group 'Display' (which is then created)
 	TwAddButton(objTweakBar, "Quitter", &ExitCallbackTw, nullptr, "");
 
 	// Objets OpenGL
@@ -486,6 +489,8 @@ void Render()
 	///////// Init objet rock
 	glUseProgram(g_BasicShader.GetProgram());
 
+	glPolygonMode(GL_FRONT_AND_BACK, (wireframe ? GL_LINE : GL_FILL));
+
 	auto worldLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_worldMatrix");
 	auto offsetLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_offset");
 	auto useTransparencyLocation = glGetUniformLocation(g_BasicShader.GetProgram(), "u_useTransparency");
@@ -497,6 +502,10 @@ void Render()
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Rock.IBO);
 
 	glUniform3f(lightDirectionLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+
+	if(wireframe) {
+		glDisable(GL_CULL_FACE);
+	}	
 	///////// Fin init objet rock
 
 	g_Rock.position = glm::vec3(0, 10, 0);
@@ -516,6 +525,59 @@ void Render()
 	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
 
 	glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
+
+
+	/////////////////////////////////////////////////////////////////////////////////////// QUEUE DE ROCHERS !
+	int numCubes = 30;
+	double ka = 5.3, kb = 1.7, kc = 4.1;
+	float color0[] = {1.0f, 0.5f, 0.0f};
+	float color1[] = {0.5f, 1.0f, 0.0f};
+	auto currentTime = glutGet(GLUT_ELAPSED_TIME);
+
+	for(auto n = 0; n < numCubes; ++n) {
+		double t = 0.05*n - (double) currentTime / 2000.0;
+		double r = 5.0*n + (double) currentTime / 10.0;
+		float c = (float) n / numCubes;
+
+		// Set cube position
+		//glMatrixMode(GL_MODELVIEW);
+
+		//glLoadIdentity();
+		//glTranslated(0.6*cos(ka*t), 0.6*cos(kb*t), 0.6*sin(kc*t));
+		glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), glm::vec3((0.6*cos(ka*t), 0.6*cos(kb*t), 0.6*sin(kc*t))));
+
+		//glRotated(r, 0.2, 0.7, 0.2);
+		//tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(yaw, pitch, roll);
+		tempWorldMatrix = glm::rotate(tempWorldMatrix, (float)r, glm::vec3(0.2, 0.7, 0.2));
+
+		//glScaled(0.1, 0.1, 0.1);
+		tempWorldMatrix = glm::scale(tempWorldMatrix, glm::vec3(0.3, 0.3, 0.3));
+
+		//glTranslated(-0.5, -0.5, -0.5);
+		//tempWorldMatrix = glm::translate(tempWorldMatrix, glm::vec3(25, 5, 50));
+
+		g_Rock.position = glm::vec3(0, 0, 0);
+		g_Rock.worldMatrix = tempWorldMatrix;
+
+		glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
+		glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
+
+		// Set cube color
+		// glColor3f((1.0f - c)*color0[0] + c*color1[0], (1.0f - c)*color0[1] + c*color1[1], (1.0f - c)*color0[2] + c*color1[2]);
+
+		// Draw cube
+		//glBegin(GL_QUADS);
+		//glNormal3f(0, 0, -1); glVertex3f(0, 0, 0); glVertex3f(0, 1, 0); glVertex3f(1, 1, 0); glVertex3f(1, 0, 0); // front face
+		//glNormal3f(0, 0, +1); glVertex3f(0, 0, 1); glVertex3f(1, 0, 1); glVertex3f(1, 1, 1); glVertex3f(0, 1, 1); // back face
+		//glNormal3f(-1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1); glVertex3f(0, 1, 1); glVertex3f(0, 1, 0); // left face
+		//glNormal3f(+1, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 1, 0); glVertex3f(1, 1, 1); glVertex3f(1, 0, 1); // right face
+		//glNormal3f(0, -1, 0); glVertex3f(0, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 0, 1); glVertex3f(0, 0, 1); // bottom face  
+		//glNormal3f(0, +1, 0); glVertex3f(0, 1, 0); glVertex3f(0, 1, 1); glVertex3f(1, 1, 1); glVertex3f(1, 1, 0); // top face
+		//glEnd();
+		glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
+	}
+
+
 
 	/////////////////////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe transparent
 	// On active/désactive des fonctions pour la transparence
@@ -539,12 +601,14 @@ void Render()
 	// On active/désactive des fonctions pour annuler la transparence
 	glDisable(GL_BLEND);
 	// Pas besoin de redésactiver, vu qu'on le laisse activé finalement
-	// glEnable(GL_CULL_FACE);
 
 	////////////////////////////////////////////////////////////////////////////////////// On reset tous les trucs bidules (pas vraiment obligatoire vu qu'on les écrase au prochain passage, mais bon)
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 	glBindVertexArray(0);
+
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	glEnable(GL_CULL_FACE);
 
 	////////////////////////////////////////////////////////////////////////////////////// Dessin de TweakBar
 	TwDraw();
