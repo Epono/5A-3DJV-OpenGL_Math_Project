@@ -559,7 +559,7 @@ void Render()
 		glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), glm::vec3(sizeX*cos(ka*t), sizeY*cos(kb*t), sizeZ*sin(kc*t)));
 
 		//glRotated(r, 0.2, 0.7, 0.2);
-		//tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(yaw, pitch, roll);
+		tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(0.2f*(float)cos(ka*t), 0.7f*(float) cos(kb*t), 0.2f*(float) sin(kc*t));
 		//tempWorldMatrix = glm::rotate(tempWorldMatrix, (float)r, glm::vec3(0.2, 0.7, 0.2));
 
 		//glScaled(0.1, 0.1, 0.1);
