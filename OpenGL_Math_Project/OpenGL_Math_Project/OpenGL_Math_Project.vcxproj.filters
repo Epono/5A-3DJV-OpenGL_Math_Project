@@ -69,5 +69,11 @@
     <None Include="skybox.vs">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="arrow.fs">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="arrow.vs">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
 </Project>

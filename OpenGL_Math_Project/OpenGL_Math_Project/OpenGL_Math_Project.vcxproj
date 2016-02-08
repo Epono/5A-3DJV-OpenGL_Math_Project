@@ -95,6 +95,8 @@
     <ClInclude Include="Vector.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="arrow.fs" />
+    <None Include="arrow.vs" />
     <None Include="basic.fs" />
     <None Include="basic.vs" />
     <None Include="skybox.fs" />

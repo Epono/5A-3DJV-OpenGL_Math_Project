@@ -16,6 +16,7 @@
 TwBar* objTweakBar;
 
 EsgiShader g_BasicShader;
+EsgiShader g_ArrowShader;
 EsgiShader g_SkyboxShader;
 
 int previousTime = 0;
@@ -56,16 +57,19 @@ struct Object
 	GLuint textureObj;
 
 	// Champs divers
-	bool autoRotate;
 
 	// Temp
 	glm::vec4 rotationQuaternion;
 };
 
 Object g_Rock;
+Object g_Arrow;
 Object g_CubeMap;
 glm::vec3 lightDirection = glm::vec3(0.0f, 0.0f, -1.0f);
 bool wireframe;
+bool transparent;
+int numCubes = 30, sizeX = 6, sizeY = 6, sizeZ = 6;
+double ka = 5.3, kb = 1.7, kc = 4.1, speed = 1.;
 
 float horizontalAngleCamera = 3.14f;				// Initial horizontal angle : toward -Z
 float verticalAngleCamera = 0.0f;					// Initial vertical angle : none
@@ -168,7 +172,7 @@ void InitCubemap()
 	glUseProgram(0);
 }
 
-void LoadOBJ(const std::string &inputFile)
+void LoadOBJ(const std::string &inputFile, Object &object)
 {
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
@@ -179,7 +183,7 @@ void LoadOBJ(const std::string &inputFile)
 	const std::vector<float>& normals = shapes[0].mesh.normals;
 	const std::vector<float>& texcoords = shapes[0].mesh.texcoords;
 
-	g_Rock.ElementCount = indices.size();
+	object.ElementCount = indices.size();
 
 	uint32_t stride = 0;
 
@@ -199,13 +203,13 @@ void LoadOBJ(const std::string &inputFile)
 	const auto count = positions.size() / 3;
 	const auto totalSize = count * stride;
 
-	glGenBuffers(1, &g_Rock.IBO);
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Rock.IBO);
+	glGenBuffers(1, &object.IBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, object.IBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(uint32_t), &indices[0], GL_STATIC_DRAW);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-	glGenBuffers(1, &g_Rock.VBO);
-	glBindBuffer(GL_ARRAY_BUFFER, g_Rock.VBO);
+	glGenBuffers(1, &object.VBO);
+	glBindBuffer(GL_ARRAY_BUFFER, object.VBO);
 	glBufferData(GL_ARRAY_BUFFER, totalSize, nullptr, GL_STATIC_DRAW);
 
 	// glMapBuffer retourne un pointeur sur la zone memoire allouee par glBufferData 
@@ -233,9 +237,9 @@ void LoadOBJ(const std::string &inputFile)
 	}
 	glUnmapBuffer(GL_ARRAY_BUFFER);
 
-	glGenVertexArrays(1, &g_Rock.VAO);
-	glBindVertexArray(g_Rock.VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, g_Rock.VBO);
+	glGenVertexArrays(1, &object.VAO);
+	glBindVertexArray(object.VAO);
+	glBindBuffer(GL_ARRAY_BUFFER, object.VBO);
 	uint32_t offset = 3 * sizeof(float);
 	glVertexAttribPointer(0, 3, GL_FLOAT, false, stride, nullptr);
 	glEnableVertexAttribArray(0);
@@ -257,7 +261,7 @@ void LoadOBJ(const std::string &inputFile)
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-	LoadAndCreateTextureRGBA(materials[0].diffuse_texname.c_str(), g_Rock.textureObj);
+	LoadAndCreateTextureRGBA(materials[0].diffuse_texname.c_str(), object.textureObj);
 }
 
 void CleanObjet(Object& objet)
@@ -306,21 +310,37 @@ void Initialize()
 	// AntTweakBar
 	TwInit(TW_OPENGL, NULL); // ou TW_OPENGL_CORE selon le cas de figure
 	objTweakBar = TwNewBar("OBJ Loader");
-	TwAddSeparator(objTweakBar, "Camera", "");
-	TwAddVarRW(objTweakBar, "Auto Rotate Object", TW_TYPE_BOOLCPP, &g_Rock.autoRotate, "");
-	TwAddSeparator(objTweakBar, "Objet", "");
-	TwAddVarRW(objTweakBar, "Yaw", TW_TYPE_FLOAT, &g_Rock.rotation.y, "");
-	TwAddSeparator(objTweakBar, "...", "");
-	TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Rock.rotationQuaternion, "label='Object rotation' opened=true help='Change the object orientation.' ");
-	TwAddVarRW(objTweakBar, "LightDir", TW_TYPE_DIR3F, &lightDirection, "label='Light direction' opened=true help='Change the light direction.' ");
+	TwAddVarRW(objTweakBar, "Quaternion", TW_TYPE_QUAT4F, &g_Rock.rotationQuaternion, "label='Object rotation' opened=false help='Change the object orientation.' ");
+	TwAddVarRW(objTweakBar, "LightDir", TW_TYPE_DIR3F, &lightDirection, "label='Light direction' opened=false help='Change the light direction.' ");
+	TwAddVarRW(objTweakBar, "Number of cubes", TW_TYPE_INT32, &numCubes,
+			   " group='Spirale' min=1");
+	TwAddVarRW(objTweakBar, "speed", TW_TYPE_DOUBLE, &speed,
+			   " group='Spirale' min=0 max=2 step=0.1 ");
+	TwAddVarRW(objTweakBar, "deltaX", TW_TYPE_DOUBLE, &ka,
+			   " group='Spirale' min=0 max=10 step=0.1");
+	TwAddVarRW(objTweakBar, "deltaY", TW_TYPE_DOUBLE, &kb,
+			   " group='Spirale' min=0 max=10 step=0.1");
+	TwAddVarRW(objTweakBar, "deltaZ", TW_TYPE_DOUBLE, &kc,
+			   " group='Spirale' min=0 max=10 step=0.1");
+	TwAddVarRW(objTweakBar, "sizeX", TW_TYPE_INT32, &sizeX,
+			   " group='Spirale' min=0");
+	TwAddVarRW(objTweakBar, "sizeY", TW_TYPE_INT32, &sizeY,
+			   " group='Spirale' min=0");
+	TwAddVarRW(objTweakBar, "sizeZ", TW_TYPE_INT32, &sizeZ,
+			   " group='Spirale' min=0");
 	TwAddVarRW(objTweakBar, "Wireframe", TW_TYPE_BOOLCPP, &wireframe,
-			   " group='Display' key=w help='Toggle wireframe display mode.' "); // 'Wireframe' is put in the group 'Display' (which is then created)
-	TwAddButton(objTweakBar, "Quitter", &ExitCallbackTw, nullptr, "");
+			   " group='Display' key=w help='Toggle wireframe display mode.' ");
+	TwAddVarRW(objTweakBar, "Transparence", TW_TYPE_BOOLCPP, &transparent,
+			   " group='Display'  help='Toggle transparence display mode.' ");
 
 	// Objets OpenGL
 	g_BasicShader.LoadVertexShader("basic.vs");
 	g_BasicShader.LoadFragmentShader("basic.fs");
 	g_BasicShader.Create();	
+
+	g_ArrowShader.LoadVertexShader("arrow.vs");
+	g_ArrowShader.LoadFragmentShader("arrow.fs");
+	g_ArrowShader.Create();
 
 	glGenBuffers(1, &g_Camera.UBO);
 	glBindBuffer(GL_UNIFORM_BUFFER, g_Camera.UBO);
@@ -333,11 +353,19 @@ void Initialize()
 	auto blockIndex = glGetUniformBlockIndex(program, "ViewProj");
 	glUniformBlockBinding(program, blockIndex, 0);
 
+	program = g_ArrowShader.GetProgram();
+
+	auto blockIndex2 = glGetUniformBlockIndex(program, "ViewProj");
+	glUniformBlockBinding(program, blockIndex2, 0);
+
 	// Setup
 	previousTime = glutGet(GLUT_ELAPSED_TIME);
 
 	const std::string inputFile = "rock.obj";
-	LoadOBJ(inputFile);
+	LoadOBJ(inputFile, g_Rock);
+
+	const std::string inputFile2 = "arrow.obj";
+	LoadOBJ(inputFile2, g_Arrow);
 
 	InitCubemap();
 
@@ -364,9 +392,11 @@ void Terminate()
 	glDeleteBuffers(1, &g_Camera.UBO);
 
 	CleanObjet(g_Rock);
+	CleanObjet(g_Arrow);
 	CleanObjet(g_CubeMap);
 
 	g_BasicShader.Destroy();
+	g_ArrowShader.Destroy();
 	g_SkyboxShader.Destroy();
 
 	TwTerminate();
@@ -387,13 +417,6 @@ void Update()
 	auto delta = currentTime - previousTime;
 	previousTime = currentTime;
 	auto elapsedTime = delta / 1000.0f;
-
-	///////////////////////////////////////////////////////////////////////////////////// Rotation lente d'un caillou
-	// TODO: va changer 
-	if(g_Rock.autoRotate)
-	{
-		g_Rock.rotation.y += 10.f * elapsedTime;
-	}
 
 	///////////////////////////////////////////////////////////////////////////////////// Gestion du clavier (principalement déplacement)
 	if(keyState['z'] == GLUT_DOWN)
@@ -507,7 +530,53 @@ void Render()
 		glDisable(GL_CULL_FACE);
 	}	
 	///////// Fin init objet rock
+	// Faudrait trier par Z fait chier
 
+	if(transparent) {
+		glEnable(GL_BLEND);
+		glUniform1f(useTransparencyLocation, 1);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	}
+	else {
+		glDisable(GL_BLEND); 
+		glUniform1f(useTransparencyLocation, 0);
+	}
+
+	/////////////////////////////////////////////////////////////////////////////////////// QUEUE DE ROCHERS !
+	auto currentTime = glutGet(GLUT_ELAPSED_TIME);
+
+	for(auto n = 0; n < numCubes; ++n) {
+		double t = 0.05*n - (double) (currentTime*speed) / 2000.0;
+		double r = 5.0*n + (double) (currentTime*speed) / 10.0;
+		float c = (float) n / numCubes;
+
+		// Set cube position
+		//glMatrixMode(GL_MODELVIEW);
+
+		//glLoadIdentity();
+		//glTranslated(0.6*cos(ka*t), 0.6*cos(kb*t), 0.6*sin(kc*t));
+		glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), glm::vec3(sizeX*cos(ka*t), sizeY*cos(kb*t), sizeZ*sin(kc*t)));
+
+		//glRotated(r, 0.2, 0.7, 0.2);
+		//tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(yaw, pitch, roll);
+		//tempWorldMatrix = glm::rotate(tempWorldMatrix, (float)r, glm::vec3(0.2, 0.7, 0.2));
+
+		//glScaled(0.1, 0.1, 0.1);
+		tempWorldMatrix = glm::scale(tempWorldMatrix, glm::vec3(0.3, 0.3, 0.3));
+
+		//glTranslated(-0.5, -0.5, -0.5);
+		tempWorldMatrix = glm::translate(tempWorldMatrix, glm::vec3(0, 0, -50));
+
+		g_Rock.position = glm::vec3(0, 0, 0);
+		g_Rock.worldMatrix = tempWorldMatrix;
+
+		glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
+		glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
+
+		glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
+	}
+	/////////////////////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe (quaternions maison)
 	g_Rock.position = glm::vec3(0, 10, 0);
 
 	float yaw = glm::radians(g_Rock.rotation.y);
@@ -521,86 +590,61 @@ void Render()
 	g_Rock.worldMatrix = tempWorldMatrix;
 
 	glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
-	glUniform1f(useTransparencyLocation, 0);
 	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
 
 	glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
 
-
-	/////////////////////////////////////////////////////////////////////////////////////// QUEUE DE ROCHERS !
-	int numCubes = 30;
-	double ka = 5.3, kb = 1.7, kc = 4.1;
-	float color0[] = {1.0f, 0.5f, 0.0f};
-	float color1[] = {0.5f, 1.0f, 0.0f};
-	auto currentTime = glutGet(GLUT_ELAPSED_TIME);
-
-	for(auto n = 0; n < numCubes; ++n) {
-		double t = 0.05*n - (double) currentTime / 2000.0;
-		double r = 5.0*n + (double) currentTime / 10.0;
-		float c = (float) n / numCubes;
-
-		// Set cube position
-		//glMatrixMode(GL_MODELVIEW);
-
-		//glLoadIdentity();
-		//glTranslated(0.6*cos(ka*t), 0.6*cos(kb*t), 0.6*sin(kc*t));
-		glm::mat4 tempWorldMatrix = glm::translate(glm::mat4(1), glm::vec3(6*cos(ka*t), 6*cos(kb*t), 6*sin(kc*t)));
-
-		//glRotated(r, 0.2, 0.7, 0.2);
-		//tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(yaw, pitch, roll);
-		//tempWorldMatrix = glm::rotate(tempWorldMatrix, (float)r, glm::vec3(0.2, 0.7, 0.2));
-
-		//glScaled(0.1, 0.1, 0.1);
-		tempWorldMatrix = glm::scale(tempWorldMatrix, glm::vec3(0.3, 0.3, 0.3));
-
-		//glTranslated(-0.5, -0.5, -0.5);
-		//tempWorldMatrix = glm::translate(tempWorldMatrix, glm::vec3(25, 5, 50));
-
-		g_Rock.position = glm::vec3(0, 0, 0);
-		g_Rock.worldMatrix = tempWorldMatrix;
-
-		glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
-		glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
-
-		// Set cube color
-		// glColor3f((1.0f - c)*color0[0] + c*color1[0], (1.0f - c)*color0[1] + c*color1[1], (1.0f - c)*color0[2] + c*color1[2]);
-
-		// Draw cube
-		//glBegin(GL_QUADS);
-		//glNormal3f(0, 0, -1); glVertex3f(0, 0, 0); glVertex3f(0, 1, 0); glVertex3f(1, 1, 0); glVertex3f(1, 0, 0); // front face
-		//glNormal3f(0, 0, +1); glVertex3f(0, 0, 1); glVertex3f(1, 0, 1); glVertex3f(1, 1, 1); glVertex3f(0, 1, 1); // back face
-		//glNormal3f(-1, 0, 0); glVertex3f(0, 0, 0); glVertex3f(0, 0, 1); glVertex3f(0, 1, 1); glVertex3f(0, 1, 0); // left face
-		//glNormal3f(+1, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 1, 0); glVertex3f(1, 1, 1); glVertex3f(1, 0, 1); // right face
-		//glNormal3f(0, -1, 0); glVertex3f(0, 0, 0); glVertex3f(1, 0, 0); glVertex3f(1, 0, 1); glVertex3f(0, 0, 1); // bottom face  
-		//glNormal3f(0, +1, 0); glVertex3f(0, 1, 0); glVertex3f(0, 1, 1); glVertex3f(1, 1, 1); glVertex3f(1, 1, 0); // top face
-		//glEnd();
-		glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
-	}
-
-
-
-	/////////////////////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe transparent
-	// On active/désactive des fonctions pour la transparence
-	glEnable(GL_BLEND);
-	// Si on laisse activé, c'est plus joli, mais on voit rien à l'intérieur, donc mieux de laisser activer en fait
-	// Probleme de normales ?
-	// glDisable(GL_CULL_FACE);		
-
-	glBlendEquation(GL_FUNC_ADD);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-	g_Rock.position = glm::vec3(0, 0, 0);
+	/////////////////////////////////////////////////////////////////////////////////////// Rendu d'un objet "repère" fixe (quaternions tw)
 	g_Rock.worldMatrix = Quaternion(g_Rock.rotationQuaternion.x, g_Rock.rotationQuaternion.y, g_Rock.rotationQuaternion.z, g_Rock.rotationQuaternion.w).toRotationMatrix();
 
-	glUniform3f(offsetLocation, g_Rock.position.x, g_Rock.position.y, g_Rock.position.z);
-	glUniform1f(useTransparencyLocation, 1);
+	glUniform3f(offsetLocation, 0, 0, 0);
 	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Rock.worldMatrix));
 
 	glDrawElements(GL_TRIANGLES, g_Rock.ElementCount, GL_UNSIGNED_INT, 0);
 
-	// On active/désactive des fonctions pour annuler la transparence
-	glDisable(GL_BLEND);
-	// Pas besoin de redésactiver, vu qu'on le laisse activé finalement
+	////////////////////////////////////////////////////////////////////////////////////// Dessin lumière
+	///////// Init objet arrow
+	glUseProgram(g_ArrowShader.GetProgram());
+
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+	worldLocation = glGetUniformLocation(g_ArrowShader.GetProgram(), "u_worldMatrix");
+
+	glBindTexture(GL_TEXTURE_2D, g_Arrow.textureObj);
+	glBindVertexArray(g_Arrow.VAO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g_Arrow.IBO);
+
+	float arrowPositionFactor = 50;
+	g_Arrow.position = -lightDirection * glm::vec3(arrowPositionFactor*20);
+
+	/////////////////////////////////////////// Juste position
+	//tempWorldMatrix = glm::scale(glm::mat4(1.f), glm::vec3(1/ arrowPositionFactor));
+	//tempWorldMatrix = glm::translate(tempWorldMatrix, g_Arrow.position);
+
+	//g_Arrow.worldMatrix = tempWorldMatrix;
+
+
+	//tempWorldMatrix = glm::mat4(1);
+	//// Translation
+	//tempWorldMatrix = glm::translate(tempWorldMatrix, g_Arrow.position);
+	//// Rotation
+	//glm::extractEulerAngleXYZ(glm::lookAt(g_Arrow.position, glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f)), yaw, pitch, roll);
+	//tempWorldMatrix = tempWorldMatrix * glm::eulerAngleYXZ(-pitch, -yaw, 0.f);
+	//// Scaling
+	//tempWorldMatrix = glm::scale(tempWorldMatrix, glm::vec3(1 / arrowPositionFactor));
+
+
+	////////////////////////////////////////// Position + rotation (marche pas)
+	tempWorldMatrix = glm::scale(glm::mat4(1.f), glm::vec3(1 / arrowPositionFactor));
+	tempWorldMatrix = glm::translate(tempWorldMatrix, g_Arrow.position);
+	glm::extractEulerAngleXYZ(glm::lookAt(g_Arrow.position, glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f)), yaw, pitch, roll);
+	tempWorldMatrix *= glm::eulerAngleYXZ(g_Arrow.position.z > 0 ? -pitch : pitch, g_Arrow.position.z > 0 ? -yaw : yaw, 0.f);
+
+	g_Arrow.worldMatrix = tempWorldMatrix;
+
+	//////////////////////////////////////////
+	glUniformMatrix4fv(worldLocation, 1, GL_FALSE, glm::value_ptr(g_Arrow.worldMatrix));
+	glDrawElements(GL_TRIANGLES, g_Arrow.ElementCount, GL_UNSIGNED_INT, 0);
 
 	////////////////////////////////////////////////////////////////////////////////////// On reset tous les trucs bidules (pas vraiment obligatoire vu qu'on les écrase au prochain passage, mais bon)
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -711,7 +755,7 @@ int main(int argc, char* argv[])
 {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
-	glutInitWindowSize(800, 600);
+	glutInitWindowSize(1280, 720);
 	glutCreateWindow("OBJ Loader");
 
 #ifdef FREEGLUT
