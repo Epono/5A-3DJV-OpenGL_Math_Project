@@ -83,7 +83,6 @@
     <ClCompile Include="..\common\Common.cpp" />
     <ClCompile Include="..\common\EsgiShader.cpp" />
     <ClCompile Include="..\Libs\tinyobjloader\tiny_obj_loader.cc" />
-    <ClCompile Include="Matrix4.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Quaternion.cpp" />
   </ItemGroup>
